@@ -125,9 +125,10 @@ public class PageController {
 
     @PostMapping("/registro")
     public String registrarUsuario(Registro usuario,
-            @RequestParam(name = "especialidadesIds", required = false) List<Long> especialidadesIds,
-            Model model) {
-
+                                   @RequestParam(name = "especialidadesIds", required = false) List<Long> especialidadesIds,
+                                   Model model) {
+        
+        // 1. Verifica se o e-mail já existe
         if (registroRepository.findByEmail(usuario.getEmail()).isPresent()) {
             model.addAttribute("erro", "Este e-mail já está cadastrado.");
             model.addAttribute("especialidades", especialidadeRepository.findAll());
@@ -135,43 +136,42 @@ public class PageController {
             return "registro";
         }
 
+        // 2. Gera o código de login
         String codigo;
         do {
             codigo = gerarCodigoDe8Digitos();
         } while (registroRepository.existsByCodigoLogin(codigo));
-
         usuario.setCodigoLogin(codigo);
 
-        usuario.setSenha(passwordEncoder.encode(usuario.getSenha()));
-
-        if (especialidadesIds == null || especialidadesIds.isEmpty()) {
-            model.addAttribute("erro", "Você deve selecionar pelo menos uma especialidade.");
+        // 3. Validação: Máximo 2 especialidades
+        if (especialidadesIds != null && especialidadesIds.size() > 2) {
+            model.addAttribute("erro", "Você só pode selecionar no máximo 2 especialidades.");
             model.addAttribute("especialidades", especialidadeRepository.findAll());
             model.addAttribute("usuario", usuario);
             return "registro";
         }
 
-        if (especialidadesIds != null && especialidadesIds.size() > 2) {
-            model.addAttribute("erro", "Você só pode selecionar no máximo 2 especialidades.");
-            model.addAttribute("especialidades", especialidadeRepository.findAll());
-            return "registro";
-        }
-
+        // --- A PARTE QUE FALTAVA (SALVAR AS ESPECIALIDADES) ---
         if (especialidadesIds != null && !especialidadesIds.isEmpty()) {
+            // Busca as especialidades no banco pelos IDs que vieram do formulário
             List<Especialidade> especialidadesSelecionadas = especialidadeRepository.findAllById(especialidadesIds);
-
+            
+            // Adiciona a lista de especialidades ao objeto 'usuario'
             usuario.setEspecialidades(new HashSet<>(especialidadesSelecionadas));
         }
+        // -------------------------------------------------------
 
+        // 4. Agora sim, salva o usuário COM as especialidades
         registroRepository.save(usuario);
 
+        // 5. Envia o e-mail
         try {
             emailService.enviarCodigoDeLogin(usuario.getEmail(), usuario.getCodigoLogin());
         } catch (Exception e) {
-            System.err.println("Erro ao enviar e-mail de confirmação: " + e.getMessage());
+            System.err.println("Erro ao enviar e-mail: " + e.getMessage());
         }
 
-        return "redirect:/login";
+        return "redirect:/login?registro=success";
     }
 
     @PostMapping("/login")
